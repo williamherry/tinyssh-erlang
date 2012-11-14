@@ -5,66 +5,74 @@
 -export([upload/3]).
 -export([shell/4]).
 -export([help/0]).
+-export([run_action/7]).
 
-main([Host, Post, User, Pass, Action, IP_FILE]) ->
-  {ok, Connection} = init(Host, Post, User, Pass),
-  case Action of
-    "download" ->
-      do_download(Connection, IP_FILE);
-    "upload" ->
-      do_upload(Connection, IP_FILE);
-    "run" ->
-      do_run(Connection, IP_FILE);
-    _ ->
-      help()
-  end.
-
-init(Host, Port, User, Pass) ->
-  {P, []} = string:to_integer(Port),
+main([Host_file, Port, User, Pass, Action, From, To]) ->
   crypto:start(),
   ssh:start(),
-  ssh:connect(Host, P, [{user, User},
-                           {password, Pass},
-                           {silently_accept_hosts, true}
-                          ]).
 
-do_run(Connection, IP_FILE) ->
-  io:format("we are run the command ~p ~p~n", [Connection, IP_FILE]).
-
-do_download(Connection, IP_FILE) ->
-  Lines = readlines(IP_FILE),
-  Fun = fun(L) ->
-      io:format("downloading file ~p to ~p\n",
-                ["/home/william/.bashrc", string:concat("/tmp/.bashrc-", L)]),
-      download(Connection, "/home/william/.bashrc", string:concat("/tmp/.bashrc", L))
+  Hosts = readlines(Host_file),
+  Fun = fun(Host) ->
+      run_action(Host, Port, User, Pass, Action, From, To)
   end,
-  lists:foreach(Fun, Lines).
+  lists:foreach(Fun, Hosts).
 
-do_upload(Connection, IP_FILE) ->
-  Lines = readlines(IP_FILE),
-  Fun = fun(L) ->
-      io:format("uploading file ~p to ~p\n",
-                ["/home/william/.bashrc", string:concat("/tmp/.bashrc-", L)]),
-      upload(Connection, "/home/william/.bashrc", string:concat("/tmp/.bashrc", L))
-  end,
-  lists:foreach(Fun, Lines).
+run_action(Host, Port, User, Pass, Action, From, To) ->
+  try connect(Host, list_to_integer(Port), User, Pass) of
+    {ok, Connection} ->
+      io:format("~nConnected to remote host: ~p~n", [Host]),
+      erlang:apply(tinyssh, list_to_atom(Action),
+                   [Connection, From, To]);
+    {error, Reason} ->
+      io:format("Error occur when connecting to host: ~w~n", [Reason])
+  catch
+    Other ->
+      io:format("Error occur when connecting to host: ~w~n", [Other])
+  end.
+
+connect(Host, Port, User, Pass) ->
+  ssh:connect(Host, Port, [{user, User},
+                               {password, Pass},
+                               {silently_accept_hosts, true},
+                               3
+                              ]).
 
 download(Connection, From, To) ->
   case ssh_sftp:start_channel(Connection) of
     {ok, Pid} ->
-      {ok, Data} = ssh_sftp:read_file(Pid, From),
-      file:write_file(To, Data);
+      case ssh_sftp:read_file(Pid, From) of
+        {ok, Data} ->
+          case file:write_file(To, Data) of
+            ok ->
+              io:format("Successfully downloaded ~p to ~p~n~n",
+                        [From, To]);
+            {error, Reason} ->
+              io:format("Error occur when write to local file: ~w~n", [Reason])
+          end;
+        {error, Reason} ->
+          io:format("Error occur read from remote file : ~w~n", [Reason])
+      end;
     {error, Reason} ->
-      io:format("Some thing goes wrong: ~w~n", [Reason])
+      io:format("Error occur when start channel: ~w~n", [Reason])
   end.
 
 upload(Connection, From, To) ->
   case ssh_sftp:start_channel(Connection) of
     {ok, Pid} ->
-      {ok, Data} = file:read_file(From),
-      ok = ssh_sftp:write_file(Pid, To, Data);
+      case file:read_file(From) of
+        {ok, Data} ->
+          case ssh_sftp:write_file(Pid, To, Data) of
+            ok ->
+              io:format("Successfully uploaded ~p to ~p~n~n",
+                        [From, To]);
+            {error, Reason} ->
+              io:format("Error occur when write to remote file: ~w~n", [Reason])
+          end;
+        {error, Reason} ->
+          io:format("Error occur when read from local file: ~w~n", [Reason])
+      end;
     {error, Reason} ->
-      io:format("Some thing goes wrong: ~w~n", [Reason])
+      io:format("Error occur when uploading: ~w~n", [Reason])
   end.
 
 shell(Host, Port, User, Pass) ->

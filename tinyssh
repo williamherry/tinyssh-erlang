@@ -1,4 +1,52 @@
-#!/usr/bin/env escript
+#!/bin/bash
 
-main(String) ->
-  tinyssh:main(String).
+TEMP=`getopt -o l:u:p:k: -n 'example.bash' -- "$@"`
+
+if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
+
+eval set -- "$TEMP"
+
+while true ; do
+  case "$1" in
+    -l)
+      echo "Option l argument \`$2'" ; Host_file=$2; shift 2
+      ;;
+    -u)
+      echo "Option u argument \`$2'" ; User=$2; shift 2
+      ;;
+    -p)
+      echo "Option p argument \`$2'" ; Port=$2; shift 2
+      ;;
+    -k)
+      echo "Option k argument \`$2'" ; Password=$2; shift 2
+      ;;
+    --)
+      shift ; break
+      ;;
+    *)
+      echo "Internal error!" ; exit 1
+      ;;
+  esac
+done
+echo "Remaining arguments:"
+for arg do
+   echo '--> '"\`$arg'" ;
+   Arg[${#Arg[@]}]="$arg"
+done
+echo $Host_file
+echo $User
+echo $Port
+echo $Password
+if [ "3" == "${#Arg[@]}" ]; then
+  Action="${Arg[0]}"
+  From="${Arg[1]}"
+  To="${Arg[2]}"
+  erl -run tinyssh main $Host_file $Port $User $Password $Action $From $To -run init stop -noshell
+elif [ "2" == "${#Arg[@]}" ]; then
+  Action="run"
+  Cmd="${Arg[1]}"
+fi
+echo $Action
+echo $From
+echo $To
+echo $Cmd
