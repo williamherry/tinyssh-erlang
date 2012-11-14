@@ -1,19 +1,31 @@
 -module(tinyssh).
 
--export([main/1]).
+-export([upload_download/1]).
+-export([run_cmd/1]).
 -export([download/3]).
 -export([upload/3]).
--export([shell/4]).
--export([help/0]).
 -export([run_action/7]).
+-export([run/2]).
 
-main([Host_file, Port, User, Pass, Action, From, To]) ->
+-define(TIMEOUT, 300).
+
+upload_download([Host_file, Port, User, Pass, Action, From, To]) ->
   crypto:start(),
   ssh:start(),
 
   Hosts = readlines(Host_file),
   Fun = fun(Host) ->
       run_action(Host, Port, User, Pass, Action, From, To)
+  end,
+  lists:foreach(Fun, Hosts).
+
+run_cmd([Host_file, Port, User, Pass, Action, Cmd]) ->
+  crypto:start(),
+  ssh:start(),
+
+  Hosts = readlines(Host_file),
+  Fun = fun(Host) ->
+      run_action(Host, Port, User, Pass, Action, Cmd)
   end,
   lists:foreach(Fun, Hosts).
 
@@ -24,17 +36,30 @@ run_action(Host, Port, User, Pass, Action, From, To) ->
       erlang:apply(tinyssh, list_to_atom(Action),
                    [Connection, From, To]);
     {error, Reason} ->
-      io:format("Error occur when connecting to host: ~w~n", [Reason])
+      io:format("Error occur when connecting to host ~p : ~w~n", [Host, Reason])
   catch
     Other ->
-      io:format("Error occur when connecting to host: ~w~n", [Other])
+      io:format("Error occur when connecting to host ~p : ~w~n", [Host, Other])
+  end.
+
+run_action(Host, Port, User, Pass, Action, Cmd) ->
+  try connect(Host, list_to_integer(Port), User, Pass) of
+    {ok, Connection} ->
+      io:format("~nConnected to remote host: ~p~n", [Host]),
+      erlang:apply(tinyssh, list_to_atom(Action),
+                   [Connection, Cmd]);
+    {error, Reason} ->
+      io:format("Error occur when connecting to host ~p : ~w~n", [Host, Reason])
+  catch
+    Other ->
+      io:format("Error occur when connecting to host ~p : ~w~n", [Host, Other])
   end.
 
 connect(Host, Port, User, Pass) ->
   ssh:connect(Host, Port, [{user, User},
                                {password, Pass},
                                {silently_accept_hosts, true},
-                               3
+                               ?TIMEOUT
                               ]).
 
 download(Connection, From, To) ->
@@ -75,8 +100,19 @@ upload(Connection, From, To) ->
       io:format("Error occur when uploading: ~w~n", [Reason])
   end.
 
-shell(Host, Port, User, Pass) ->
-  ssh:shell(Host, Port, [{user, User}, {password, Pass}]).
+run(Connection, Cmd) ->
+  case ssh_connection:session_channel(Connection, ?TIMEOUT) of
+    {ok, Channel} ->
+      case ssh_connection:exec(Connection, Channel, Cmd, ?TIMEOUT) of
+        success ->
+          io:format("Successfully run command: ~p~n", [Cmd]);
+        fail ->
+          io:format("Error occur when run command: ~w", [Cmd])
+      end;
+    {error, Reason} ->
+      io:format("Error occur when session_channel: ~w~n", [Reason])
+  end.
+
 
 readlines(FileName) ->
   {ok, Device} = file:open(FileName, [read]),
@@ -87,9 +123,3 @@ get_all_lines(Device, Accum) ->
     eof  -> file:close(Device), Accum;
     Line -> get_all_lines(Device, Accum ++ [string:strip(Line, right, $\n)])
   end.
-
-help() ->
-  io:format("wrong arguments!\nusage:\n\t \
-            tinyssh run 'cmd' -l ip_list.txt\n\t \
-            tinyssh upload|download src dst\n", []).
-
