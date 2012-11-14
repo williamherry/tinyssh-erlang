@@ -1,5 +1,16 @@
 #!/bin/bash
 
+which erl &> /dev/null
+if [ "0" != "$?" ]; then
+  echo "You need install erlang first"
+  exit
+fi
+
+ls tinyssh.beam &> /dev/null
+if [ "0" != "$?" ]; then
+  erlc tinyssh.erl
+fi
+
 TEMP=`getopt -o l:u:p:k: -n 'example.bash' -- "$@"`
 
 if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
@@ -9,19 +20,15 @@ eval set -- "$TEMP"
 while true ; do
   case "$1" in
     -l)
-      #echo "Option l argument \`$2'" ;
       Host_file=$2; shift 2
       ;;
     -u)
-      #echo "Option u argument \`$2'" ;
       User=$2; shift 2
       ;;
     -p)
-      #echo "Option p argument \`$2'" ;
       Port=$2; shift 2
       ;;
     -k)
-      #echo "Option k argument \`$2'" ;
       Password=$2; shift 2
       ;;
     --)
@@ -43,9 +50,13 @@ if [ "3" == "${#Arg[@]}" ]; then
   Action="${Arg[0]}"
   From="${Arg[1]}"
   To="${Arg[2]}"
-  erl -run tinyssh upload_download $Host_file $Port $User $Password $Action $From $To -run init stop -noshell
+  erl -run tinyssh upload_download $Host_file $Port $User $Password $Action $From $To -noshell
 elif [ "2" == "${#Arg[@]}" ]; then
   Action="run"
   Cmd="${Arg[1]}"
-  erl -run tinyssh run_cmd $Host_file $Port $User $Password $Action "$Cmd" -run init stop -noshell
+  erl -run tinyssh run_cmd $Host_file $Port $User $Password $Action "$Cmd" -noshell
+else
+  echo -e "\nWrong argument, example usage:\n"
+  echo -e "\t tinyssh run 'ls -l' -l ips.txt -u username -p 22 -k password"
+  echo -e "\t tinyssh upload|download from_file to_file -l ips.txt -u username, -p 22 -k password\n"
 fi

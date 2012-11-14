@@ -5,9 +5,10 @@
 -export([download/3]).
 -export([upload/3]).
 -export([run_action/7]).
+-export([run_action/6]).
 -export([run/2]).
 
--define(TIMEOUT, 300).
+-define(TIMEOUT, 30000).
 
 upload_download([Host_file, Port, User, Pass, Action, From, To]) ->
   crypto:start(),
@@ -15,7 +16,7 @@ upload_download([Host_file, Port, User, Pass, Action, From, To]) ->
 
   Hosts = readlines(Host_file),
   Fun = fun(Host) ->
-      run_action(Host, Port, User, Pass, Action, From, To)
+      spawn(?MODULE, run_action, [Host, Port, User, Pass, Action, From, To])
   end,
   lists:foreach(Fun, Hosts).
 
@@ -25,7 +26,7 @@ run_cmd([Host_file, Port, User, Pass, Action, Cmd]) ->
 
   Hosts = readlines(Host_file),
   Fun = fun(Host) ->
-      run_action(Host, Port, User, Pass, Action, Cmd)
+      spawn(?MODULE, run_action, [Host, Port, User, Pass, Action, Cmd])
   end,
   lists:foreach(Fun, Hosts).
 
